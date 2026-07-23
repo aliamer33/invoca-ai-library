@@ -1,0 +1,54 @@
+:root {
+  --invoca-green: #00a86b;
+  --deep-green: #004d35;
+  --black-green: #002b1e;
+  --lime: #c4f135;
+  --sand: #f5f0e8;
+  --light-sand: #faf8f5;
+  --white: #ffffff;
+  --text-primary: #002b1e;
+  --text-secondary: #3d5c52;
+  --border: #d4e4dd;
+  --shadow: 0 2px 12px rgba(0, 43, 30, 0.08);
+  --radius: 12px;
+  --font: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--light-sand);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--invoca-green);
+  font-weight: 500;
+}
+
+a:hover {
+  color: var(--deep-green);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input {
+  font-family: inherit;
+}

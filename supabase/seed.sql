@@ -1,0 +1,2 @@
+-- Seed is included in the initial migration.
+-- This file is kept for local `supabase db reset` workflows.

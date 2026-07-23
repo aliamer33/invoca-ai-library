@@ -1,0 +1,68 @@
+{
+  "tools": [
+    {
+      "name": "Air Traffic Control Intake",
+      "type": "Gumloop Agent",
+      "description": "Slack intake agent that deduplicates AI automation requests, scores impact vs effort, and routes users to existing tools in the library.",
+      "owner": "Ali Amer",
+      "team": "AI Enablement",
+      "departments": "Customer Success,Marketing,Engineering,Sales,Rev Ops,Analytics,People and Culture",
+      "builder_view": "https://gumloop.com",
+      "user_view": "https://gumloop.com/user",
+      "doc_link": "https://docs.google.com",
+      "status": "Live",
+      "tags": "intake,slack,dedup",
+      "updated_at": "2026-05-20"
+    },
+    {
+      "name": "Tool Documentation Generator",
+      "type": "Workflow",
+      "description": "Reads tool metadata from the library sheet and auto-generates Invoca-style user documentation in Google Docs.",
+      "owner": "Ali Amer",
+      "team": "AI Enablement",
+      "departments": "Engineering",
+      "builder_view": "https://gumloop.com",
+      "status": "Live",
+      "tags": "documentation,automation",
+      "updated_at": "2026-05-18"
+    },
+    {
+      "name": "Morning Briefing",
+      "type": "Claude Skill",
+      "description": "Configurable daily briefing that surfaces email, Slack VIP messages, and tasks for any Invoca team member.",
+      "owner": "Ali Amer",
+      "team": "AI Enablement",
+      "departments": "Customer Success,Marketing,Engineering,People and Culture,Sales,Rev Ops,Analytics",
+      "builder_view": "https://claude.ai",
+      "doc_link": "https://docs.google.com",
+      "status": "Beta",
+      "tags": "productivity,slack,email",
+      "updated_at": "2026-05-15"
+    },
+    {
+      "name": "Brand Guidelines",
+      "type": "Claude Skill",
+      "description": "Applies Invoca brand colors, typography, and logo rules to presentations, decks, and internal documents.",
+      "owner": "Ali Amer",
+      "team": "Design",
+      "departments": "Marketing",
+      "builder_view": "https://claude.ai",
+      "status": "Live",
+      "tags": "brand,design,decks",
+      "updated_at": "2026-05-12"
+    },
+    {
+      "name": "Passion Week Agent Matcher",
+      "type": "Gumloop Agent",
+      "description": "Helps marketing and CS teams discover existing Gumloop agents before building duplicates during passion week.",
+      "owner": "Matt Diederichs",
+      "team": "Marketing",
+      "departments": "Marketing,Customer Success",
+      "builder_view": "https://gumloop.com",
+      "status": "Beta",
+      "tags": "discovery,marketing",
+      "updated_at": "2026-05-10"
+    }
+  ],
+  "lastUpdated": "2026-05-22T12:00:00.000Z"
+}

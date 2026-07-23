@@ -1,0 +1,8 @@
+node_modules
+dist
+.env.local
+.env
+.DS_Store
+*.local
+sheet-export.json
+.vercel
