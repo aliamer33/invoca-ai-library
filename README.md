@@ -5,7 +5,6 @@ Internal catalog for sharing AI tools built at Invoca (Gumloop agents, workflows
 ## Quick start (local, demo data)
 
 ```bash
-cd ~/Projects/invoca-ai-catalog
 npm install
 npm run dev
 ```
@@ -88,6 +87,16 @@ supabase db push
 | Approve / reject submissions | Editors (`app_metadata.role = "editor"`) |
 | Add / edit / delete catalog directly | Editors |
 
+**RLS (Postgres policies):** Enforced in migrations under `supabase/migrations/`.
+
+| Table | Anon / public | Editor (`app_metadata.role = "editor"`) |
+|-------|---------------|----------------------------------------|
+| `tools` | `SELECT` | `INSERT` / `UPDATE` / `DELETE` |
+| `tool_submissions` | `INSERT` only when `status = 'pending'` | `SELECT` / `UPDATE` (approve/reject) |
+| `tool_votes` | `SELECT` / `INSERT` / `UPDATE` / `DELETE` | same |
+
+Editors who lack `app_metadata.role = "editor"` can sign in but CRUD/approve calls fail with RLS errors.
+
 ### 7. Catalog fields (intent and constraints)
 
 Verified against `src/types/tool.ts`, `src/lib/fetchToolsSupabase.ts`, and `src/lib/toolLinks.ts`.
@@ -139,7 +148,20 @@ npm run backfill:embeddings
 
 New and updated tools sync embeddings automatically when editors save via **Manage tools** (failures are non-blocking; re-run the backfill if search looks stale).
 
-**How search combines:** Keyword match ORs with semantic matches (`useSemanticSearch` + `searchTools`). When semantic results exist, tools are sorted by relevance score. Default match threshold in the edge function is `0.45`.
+**Client behavior** (`useSemanticSearch`):
+
+- Runs only when Supabase is configured and the query has **≥ 3 characters**
+- Debounced **350ms**
+- Passes the active type filter into the edge function (`filter_type`)
+- Keyword match **ORs** with semantic hits (`searchTools`); when semantic scores exist, results sort by similarity
+
+**Edge function defaults** (`semantic-search`):
+
+- Model: Supabase AI `gte-small`
+- `match_threshold`: `0.45`
+- `match_count`: `50`
+
+**Embedding text** (`sync-tool-embedding`) joins `name`, `type`, `description`, `team`, `departments`, and `tags`. Calling with `{ "id": "<tool-uuid>" }` syncs one tool; omitting `id` backfills rows where `embedding IS NULL` (service role required).
 
 **pgvector index note:** Migrations use an IVFFlat index (`vector_cosine_ops`), which works on all Supabase pgvector versions. HNSW is not used. If your catalog grows beyond ~100 tools, recreate the index with a higher `lists` value (roughly √row count):
 
@@ -165,9 +187,11 @@ analyze public.tools;
 | `operator class "vector_ip_ops" does not exist` | Same — use IVFFlat + cosine ops (included in current migrations) |
 | `column "link" does not exist` / missing `builder_view` | Apply `20250616000000_tool_view_links.sql` |
 | Missing department filters | Apply `20250617000000_add_departments.sql` |
-| Semantic search returns nothing | Run `npm run backfill:embeddings` and confirm edge functions are deployed |
+| Semantic search returns nothing | Deploy functions, run `npm run backfill:embeddings`, and use a query ≥ 3 chars |
 | Voting buttons missing | Confirm `VITE_SUPABASE_*` env vars are set and `tool_votes` migration is applied |
 | Approve fails with "Documentation link is required" | Submissions need a valid `doc_link` before approve |
+| Editor save fails / empty Manage panel | User must have `app_metadata.role = "editor"` (not `user_metadata`) |
+| `migrate:sheet` rejects custom types | Script still allows only `Gumloop Agent` / `Workflow` / `Claude Skill` — map or edit types before import |
 
 ## Connect your Google Sheet (legacy)
 
@@ -228,6 +252,8 @@ Invoca uses Google Workspace + Okta SSO. The site loads sheet data through a **h
 3. Return to the catalog and click **Refresh now**.
 4. **Restart** `npm run dev` after changing `.env.local`.
 
+Embed mode times out after **30 seconds** (`EMBED_TIMEOUT_MS` in `fetchToolsApi.ts`). If auth never completes, use the sign-in button, then refresh.
+
 ## Scripts
 
 | Command | Description |
@@ -237,8 +263,20 @@ Invoca uses Google Workspace + Okta SSO. The site loads sheet data through a **h
 | `npm run preview` | Preview production build |
 | `npm run backfill:embeddings` | Generate vector embeddings for tools (requires edge function + service role key) |
 | `npm run backfill:links` | Update `builder_view` / `user_view` from a sheet JSON export (matches `product:PD####` tags). Supports `--dry-run` and `--file` |
-| `npm run migrate:sheet` | One-time import from Google Sheet JSON export |
+| `npm run migrate:sheet` | One-time import from Google Sheet JSON export (`--file`, `--clear`) |
 | `npm run supabase:deploy-functions` | Deploy `semantic-search` and `sync-tool-embedding` |
+
+### Sheet → Supabase migration runbook
+
+One-time path for legacy sheet data (`scripts/migrate-sheet-to-supabase.mjs`):
+
+1. While signed into `@invoca.com`, open the Apps Script `/exec` URL and save the JSON as `sheet-export.json` in the repo root (or pass `--file`).
+2. Put `VITE_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` (service role — never commit, never ship to the browser).
+3. Apply migrations (`supabase db push`) so `builder_view` / `user_view` exist.
+4. `npm run migrate:sheet` (add `--clear` only if you intend to wipe existing `tools` rows first).
+5. Optionally `npm run backfill:links` to reconcile builder/user URLs by `product:PD####` tags, then `npm run backfill:embeddings`.
+
+**Constraints:** The migrator still validates types against the original three presets (`Gumloop Agent`, `Workflow`, `Claude Skill`) even though the live DB allows free-text types. Unknown sheet types fail the import. Product IDs / priority / platform from the sheet are folded into `tags` (`product:…`, `priority:…`, `platform:…`).
 
 ## Architecture (codepaths)
 
@@ -295,13 +333,25 @@ When environment variables are set, the app loads data in this order:
 
 ## Hosting
 
-- **Vercel:** `vercel.json` builds with Vite and serves `dist/`. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the project environment.
+- **Vercel:** `vercel.json` builds with Vite and serves `dist/` (SPA rewrite to `index.html`). Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the project environment.
 - **Netlify / other static hosts:** Deploy `dist/` the same way.
+- **Auth redirects:** `supabase/config.toml` lists `https://invoca-ai-catalog.vercel.app` and `http://127.0.0.1:5173`. If you change the production host, update Supabase Auth redirect URLs to match or editor sign-in will bounce incorrectly.
+
+### Local Supabase CLI ports (optional)
+
+From `supabase/config.toml` when running the stack locally:
+
+| Service | Port |
+|---------|------|
+| API | 54321 |
+| DB | 54322 |
+| Studio | 54323 |
 
 ## Future ideas
 
 - **Automated ingestion:** Gumloop/Claude webhooks via Supabase Edge Functions (Air Traffic Control Phase 2).
 - **Realtime:** Supabase Realtime subscriptions could replace 60s polling.
+- **migrate:sheet custom types:** Align the migrator with free-text `type` support used by the app and DB.
 
 ## Customizing column names
 
