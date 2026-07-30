@@ -2,7 +2,8 @@ import type { ToolsDataSource } from "../lib/fetchToolsApi";
 
 interface FooterProps {
   loading: boolean;
-  lastUpdated: string | null;
+  lastSynced: string | null;
+  catalogUpdated?: string | null;
   source: ToolsDataSource;
   onRefresh: () => void;
   onManage?: () => void;
@@ -11,7 +12,7 @@ interface FooterProps {
   showSuggest?: boolean;
 }
 
-function formatSyncTime(iso: string | null): string {
+function formatSyncTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
     return new Date(iso).toLocaleString(undefined, {
@@ -25,7 +26,8 @@ function formatSyncTime(iso: string | null): string {
 
 export function Footer({
   loading,
-  lastUpdated,
+  lastSynced,
+  catalogUpdated,
   source,
   onRefresh,
   onManage,
@@ -36,7 +38,13 @@ export function Footer({
   return (
     <footer className="footer">
       <p>
-        {loading ? "Syncing…" : `Last synced: ${formatSyncTime(lastUpdated)}`}
+        {loading ? "Syncing…" : `Last synced: ${formatSyncTime(lastSynced)}`}
+        {!loading && catalogUpdated && (
+          <span className="source-badge">
+            {" "}
+            · Catalog updated: {formatSyncTime(catalogUpdated)}
+          </span>
+        )}
         {source === "mock" && (
           <span className="source-badge"> · Demo data</span>
         )}
