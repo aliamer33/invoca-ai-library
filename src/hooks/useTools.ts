@@ -6,7 +6,10 @@ const REFRESH_MS = 60_000;
 
 export interface UseToolsResult {
   tools: Tool[];
-  lastUpdated: string | null;
+  /** ISO timestamp of the last successful client fetch (footer "Last synced"). */
+  lastSynced: string | null;
+  /** Newest tool `updated_at` from the data source, when available. */
+  catalogUpdated: string | null;
   loading: boolean;
   error: string | null;
   source: ToolsDataSource;
@@ -15,12 +18,12 @@ export interface UseToolsResult {
 
 export function useTools(): UseToolsResult {
   const [tools, setTools] = useState<Tool[]>([]);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [catalogUpdated, setCatalogUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<ToolsDataSource>("mock");
   const abortRef = useRef<AbortController | null>(null);
-  const lastSyncedRef = useRef<string | null>(null);
 
   const load = useCallback(async (showLoading = false) => {
     abortRef.current?.abort();
@@ -33,11 +36,9 @@ export function useTools(): UseToolsResult {
       const { data, source: src } = await fetchToolsData(controller.signal);
       if (controller.signal.aborted) return;
 
-      if (data.lastUpdated !== lastSyncedRef.current) {
-        lastSyncedRef.current = data.lastUpdated;
-        setTools(data.tools);
-        setLastUpdated(data.lastUpdated);
-      }
+      setTools(data.tools);
+      setCatalogUpdated(data.lastUpdated ?? null);
+      setLastSynced(new Date().toISOString());
       setSource(src);
       setError(null);
     } catch (err) {
@@ -74,5 +75,5 @@ export function useTools(): UseToolsResult {
     };
   }, [load]);
 
-  return { tools, lastUpdated, loading, error, source, refresh };
+  return { tools, lastSynced, catalogUpdated, loading, error, source, refresh };
 }

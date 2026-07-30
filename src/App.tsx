@@ -18,7 +18,8 @@ import { isSupabaseConfigured } from "./lib/supabaseClient";
 import { SUGGESTED_DEPARTMENTS, SUGGESTED_TOOL_TYPES, parseDepartments, toolMatchesDepartment } from "./types/tool";
 
 export default function App() {
-  const { tools, lastUpdated, loading, error, source, refresh } = useTools();
+  const { tools, lastSynced, catalogUpdated, loading, error, source, refresh } =
+    useTools();
   const votes = useToolVotes(tools);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -138,7 +139,8 @@ export default function App() {
       </main>
       <Footer
         loading={loading}
-        lastUpdated={lastUpdated}
+        lastSynced={lastSynced}
+        catalogUpdated={catalogUpdated}
         source={source}
         onRefresh={refresh}
         showSuggest={supabaseEnabled}

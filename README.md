@@ -2,6 +2,33 @@
 
 Internal catalog for sharing AI tools built at Invoca (Gumloop agents, workflows, and Claude skills). Data is stored in **Supabase** (recommended) or a Google Sheet via Apps Script. The site auto-refreshes every 60 seconds.
 
+## Refreshing the catalog
+
+Footer **Last synced** is when the browser last successfully fetched the catalog (updates on **Refresh now**, the 60s poll, and tab focus). **Catalog updated** is the newest tool `updated_at` from the data source.
+
+**Reload the catalog in the UI**
+
+1. Click **Refresh now** in the footer, or
+2. Wait ~60 seconds (auto-poll), or
+3. Switch back to the tab (refetch on focus)
+
+Confirm the footer source badge: **Supabase**, **Demo data**, or neither (legacy Sheet/API).
+
+**Update catalog content** (this moves **Catalog updated**)
+
+1. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local`
+2. Footer → **Manage tools** → sign in as an editor (`app_metadata.role = "editor"`)
+3. Add, edit, delete, or approve **Suggest a tool** submissions
+4. Click **Refresh now** — the tool list reloads; **Catalog updated** advances when a tool’s `updated_at` changes
+
+On the legacy Sheet path: edit the sheet (redeploy Apps Script if the web app changed), then refresh.
+
+**Optional: semantic search embeddings** after bulk tool changes (requires `SUPABASE_SERVICE_ROLE_KEY` and deployed edge functions):
+
+```bash
+npm run backfill:embeddings
+```
+
 ## Quick start (local, demo data)
 
 ```bash
