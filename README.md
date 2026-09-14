@@ -6,7 +6,7 @@ Internal catalog for sharing AI tools built at Invoca (Gumloop agents, workflows
 
 `useTools` (`src/hooks/useTools.ts`) loads on mount, polls every **60s**, and refetches when the tab becomes visible. Footer **Refresh now** forces an immediate pull.
 
-**Equality gate:** the hook only applies a successful response when payload `lastUpdated` differs from the previous value. Unchanged catalog timestamps leave both the in-memory tool list and the footer label alone — a successful poll or **Refresh now** with no newer `updated_at` is effectively a no-op for UI state. (PR #2 would split **Last synced** vs **Catalog updated** and always apply the fetched list; it is still unmerged.)
+**Equality gate:** `useTools` only applies a successful response when payload `lastUpdated` differs from the previous value. Unchanged catalog timestamps leave **both** the in-memory tool list and the footer label alone — a successful poll or **Refresh now** with no newer max `updated_at` is a no-op for UI state. (PR #2 would split **Last synced** vs **Catalog updated** and always apply the fetched list; it is still unmerged.)
 
 Footer **Last synced** therefore shows the payload’s `lastUpdated` (newest tool `updated_at` from the data source), not wall-clock of the last HTTP poll. Source badge: **Supabase**, **Demo data**, or neither (legacy Sheet/API).
 
@@ -58,7 +58,7 @@ Migrations live in [`supabase/migrations/`](supabase/migrations/):
 | `20250610000000_create_tools.sql` | Base `tools` table + RLS + seed |
 | `20250611000000_add_tool_submissions.sql` | Suggest-a-tool pipeline |
 | `20250612000000_add_semantic_search.sql` | Embeddings + pgvector |
-| `20250615000000_allow_custom_tool_types.sql` | Free-text tool types (`tools` + `tool_submissions`) |
+| `20250615000000_allow_custom_tool_types.sql` | Free-text tool types |
 | `20250615000001_add_tool_votes.sql` | Anonymous up/down votes |
 | `20250615000002_fix_embedding_hnsw_index.sql` | IVFFlat cosine index (compat fix) |
 | `20250616000000_tool_view_links.sql` | `link` → `builder_view` + optional `user_view` |
@@ -100,7 +100,7 @@ Restart `npm run dev`. The footer should show **Supabase** (not "Demo data"). Us
 
 Anyone can suggest a tool via **Suggest a tool** in the footer (no sign-in). Submissions land in `tool_submissions` with status `pending`. Both **Suggest** and editor **Approve** require a usable `doc_link` (`submitTool` / `approveSubmission` in `src/lib/fetchToolsSupabase.ts`).
 
-Editors sign in via **Manage tools**, review pending submissions, and **Approve** (publishes to catalog as `Beta` by default — hardcoded in `AdminPanel`) or **Reject**. Direct **Manage tools** inserts default `status` to `Live` when omitted.
+Editors sign in via **Manage tools**, review pending submissions, and **Approve** (publishes to catalog as `Beta` by default) or **Reject**. Direct **Manage tools** inserts default `status` to `Live` when omitted.
 
 Apply the submissions migration if you set up before this feature existed:
 
@@ -113,8 +113,8 @@ supabase db push
 | Action | Who |
 |--------|-----|
 | Read catalog | Anyone (anon key, no sign-in) |
-| Filter by type / department | Anyone (client-side chips). **Type** chips include presets plus any custom types present in the loaded catalog. **Department** chips are only `SUGGESTED_DEPARTMENTS` — Manage/Suggest forms also only offer those checkboxes (`DepartmentField`). Free-text audience tags outside that list (e.g. sheet imports) still match keyword search and department filter equality, but get no chip and cannot be set from the UI. UI label is **All teams** / department names, but the filter reads the `departments` field (audience), not `team` (owner). |
-| Up/down vote tools | Anyone when Supabase is configured (anonymous voter id in `localStorage` key `invoca-ai-catalog-voter-key`). Clicking the same vote again clears it (row delete). Vote UI is hidden on mock/Sheet sources. |
+| Filter by type / department | Anyone (client-side chips). **Type** chips include presets plus any custom types present in the loaded catalog. **Department** chips are only `SUGGESTED_DEPARTMENTS` — Manage/Suggest forms also only offer those checkboxes (`DepartmentField`). Free-text audience tags outside that list (e.g. sheet imports) still match keyword search and department filter equality, but get no chip and cannot be set from the UI. Filters UI label is **All teams**, but the filter reads the `departments` field (audience), not `team` (owner). |
+| Up/down vote tools | Anyone when Supabase is configured (anonymous voter id in `localStorage` key `invoca-ai-catalog-voter-key`). Clicking the same vote again clears it. Vote UI is hidden on mock/Sheet sources. |
 | Suggest a tool | Anyone (creates pending submission; custom tool types allowed) — Supabase only |
 | Approve / reject submissions | Editors (`app_metadata.role = "editor"`) |
 | Add / edit / delete catalog directly | Editors |
@@ -127,16 +127,16 @@ supabase db push
 | `tool_submissions` | editors only | anon + authenticated (`status = pending`) | editors only |
 | `tool_votes` | anon + authenticated | anon + authenticated | anon + authenticated |
 
-Votes are keyed by `(tool_id, voter_key)` (`UNIQUE`). Deleting a tool cascades vote rows (`ON DELETE CASCADE`).
+Votes are unique on `(tool_id, voter_key)`. Deleting a tool cascades its vote rows (`ON DELETE CASCADE`).
 
 ### 7. Semantic search (optional)
 
 Semantic search matches tools by meaning using pgvector embeddings and Supabase Edge Functions. **No external OpenAI (or other) API key** — both functions embed with the built-in `Supabase.ai.Session("gte-small")` model (**384** dimensions; see `supabase/functions/*/index.ts`).
 
-Client behavior (`src/hooks/useSemanticSearch.ts` + `src/lib/semanticSearch.ts` + `App.tsx`):
+Client behavior (`src/hooks/useSemanticSearch.ts` + `src/lib/semanticSearch.ts`):
 
 - Runs only when Supabase env vars are set and the query is **≥ 3 characters**
-- Debounced **350ms**; results combine with keyword matches (**OR**), then sort by similarity when semantic hits exist
+- Debounced **350ms**; results combine with keyword matches (OR), then sort by similarity when semantic hits exist
 - Keyword search (`src/lib/searchTools.ts`) matches name, description, owner, team, departments, tags, type, and status
 - Default edge-function params: `match_threshold` **0.45**, `match_count` **50**
 - Edge RPC optional filter: `filter_type` only (follows the active type chip). **Department is applied client-side after** the semantic/keyword match — the edge function does not receive a department filter.
@@ -166,7 +166,7 @@ Then run:
 npm run backfill:embeddings
 ```
 
-New and updated tools sync embeddings automatically when editors save via **Manage tools** (best-effort; failures do not block CRUD). Calling `sync-tool-embedding` with no `{ id }` body also backfills all null-embedding rows. Deletes do not need an embedding cleanup step (row is gone).
+New and updated tools sync embeddings automatically when editors save via **Manage tools** (best-effort; failures do not block CRUD). Calling `sync-tool-embedding` with no `{ id }` body also backfills all null-embedding rows.
 
 **pgvector index note:** Migrations use an IVFFlat index (`vector_cosine_ops`), which works on all Supabase pgvector versions. HNSW is not used. If your catalog grows beyond ~100 tools, recreate the index with a higher `lists` value (roughly √row count):
 
@@ -186,11 +186,11 @@ analyze public.tools;
 | Semantic search returns nothing | Run `npm run backfill:embeddings` and confirm edge functions are deployed (`gte-small` — no OpenAI key needed) |
 | Voting buttons missing | Confirm `VITE_SUPABASE_*` env vars are set and `tool_votes` migration is applied — vote UI is Supabase-only |
 | Suggest / Manage missing in footer | Same — those actions are gated on `isSupabaseConfigured()` |
-| Manage sign-in redirect fails | Align Auth URL config with `supabase/config.toml` (`127.0.0.1:5173` + production host) |
-| Department chips always empty / wrong | Confirm `20250617000000_add_departments.sql` is applied; tags live in `departments`, not `team`. Chips + forms only use `SUGGESTED_DEPARTMENTS`. UI says “teams” but filters audience tags. |
+| Department chips always empty / wrong | Confirm `20250617000000_add_departments.sql` is applied; tags live in `departments`, not `team`. Chips + forms only use `SUGGESTED_DEPARTMENTS`. |
 | Builder / User view buttons missing | Confirm `20250616000000_tool_view_links.sql` is applied; bare homepage URLs like `https://gumloop.com` are treated as placeholders and hidden |
 | Approve / suggest fails with doc link error | `doc_link` must be a usable `http(s)` URL (`requireDocLink` in `fetchToolsSupabase.ts`) |
 | Footer Last synced never moves / Refresh seems ignored | Timestamp is catalog `lastUpdated` (max tool `updated_at`); `useTools` skips applying the response when that value is unchanged — edit a tool or wait until source data changes |
+| Manage sign-in redirect fails | Align Auth URL config with `supabase/config.toml` (`127.0.0.1:5173` + `https://invoca-ai-catalog.vercel.app`) |
 | Semantic search never fires | Need Supabase env + query length ≥ 3; confirm functions deployed and embeddings backfilled |
 | `migrate:sheet` fails on custom types | Script still allows only `Gumloop Agent` / `Workflow` / `Claude Skill` — add custom types via Manage tools after import |
 | Sheet departments missing after migrate | `migrate:sheet` does not write `departments`; set audience tags in Manage tools (or SQL) after import |
@@ -208,7 +208,7 @@ Shared TypeScript contract: [`src/types/tool.ts`](src/types/tool.ts). Supabase C
 
 Do not confuse sheet alias `department` / `dept` (maps to **`team`**) with `departments` / `audience` / `target teams` (maps to **`departments`**). See `HEADER_ALIASES` in [`apps-script/Code.gs`](apps-script/Code.gs) and `SHEET_COLUMN_ALIASES` in [`src/schema.ts`](src/schema.ts). The migrate CLI also maps sheet `target user` → `team`.
 
-Suggested departments (filter chips + form checkboxes only — no free-text department input in Manage/Suggest):
+Suggested departments (filter chips + form checkboxes only — no free-text department input in Manage/Suggest). Filters UI says **All teams**, but chips filter `departments` (audience), not owning `team`:
 
 - Customer Success, Marketing, Engineering, People and Culture, Sales, Rev Ops, Analytics
 
@@ -231,7 +231,7 @@ Migration `20250616000000_tool_view_links.sql` renames `link` → `builder_view`
 
 ### Tool types
 
-Presets shown in forms/filters: `Gumloop Agent`, `Workflow`, `Claude Skill` (`SUGGESTED_TOOL_TYPES`). After `20250615000000_allow_custom_tool_types.sql`, the app and DB allow any non-empty free-text type (max 50 chars in the UI). Type filter chips also include custom types already present in the catalog. Apps Script `normalizeType` maps known aliases but also passes through unknown labels.
+Presets shown in forms/filters: `Gumloop Agent`, `Workflow`, `Claude Skill` (`SUGGESTED_TOOL_TYPES`). After `20250615000000_allow_custom_tool_types.sql`, the app and DB allow any non-empty free-text type (max 50 chars in the UI). Type filter chips also include custom types already present in the catalog.
 
 **CLI caveat:** `npm run migrate:sheet` still rejects types outside the three presets (`VALID_TYPES` in `scripts/migrate-sheet-to-supabase.mjs`).
 
@@ -275,7 +275,7 @@ Row 1 must be headers. Supported names (case-insensitive; aliases in `apps-scrip
    - **Who has access:** Only users in your Google Workspace (invoca.com)
 4. Copy the deployment URL (ends with `/exec`)
 
-**Important:** The site loads data via a hidden iframe `postMessage` path (with JSONP fallback), so it works from localhost with your @invoca.com Google login. Embed mode times out after **30s** (`EMBED_TIMEOUT_MS` in `fetchToolsApi.ts`) and then tries JSONP. After you change `Code.gs`, create a **new deployment version** (Deploy → Manage deployments → Edit → Version: New version → Deploy).
+**Important:** The site loads data via a hidden iframe `postMessage` path (with JSONP fallback), so it works from localhost with your @invoca.com Google login. Embed mode times out after **30s** (`EMBED_TIMEOUT_MS` in `src/lib/fetchToolsApi.ts`) and then tries JSONP. After you change `Code.gs`, create a **new deployment version** (Deploy → Manage deployments → Edit → Version: New version → Deploy).
 
 ### 3. Environment
 
@@ -352,21 +352,21 @@ Requires `VITE_SUPABASE_URL` (or `SUPABASE_URL`) and `SUPABASE_SERVICE_ROLE_KEY`
 ```
 invoca-ai-catalog/
 ├── supabase/
-│   ├── config.toml            # local CLI + auth site_url / redirect URLs
-│   ├── functions/             # semantic-search, sync-tool-embedding
-│   └── migrations/            # Postgres schema + RLS + seed deltas
-├── apps-script/Code.gs        # Legacy Sheet-bound Apps Script
-├── mock/tools.json            # Source copy of demo data (also in public/mock/)
-├── public/brand/              # Invoca logos
-├── scripts/                   # migrate + backfill CLIs
-├── vercel.json                # SPA rewrite to index.html
+│   ├── config.toml
+│   ├── functions/         # semantic-search, sync-tool-embedding
+│   └── migrations/        # Postgres schema + RLS + seed deltas
+├── apps-script/Code.gs    # Legacy Sheet-bound Apps Script
+├── mock/tools.json        # Source copy of demo data (also in public/mock/)
+├── public/brand/          # Invoca logos
+├── scripts/               # migrate + backfill CLIs
+├── vercel.json            # SPA rewrite to index.html
 ├── src/
-│   ├── components/            # Header, Filters, ToolCard, ToolGrid, Footer,
-│   │                          # AdminPanel, SubmitToolPanel, DepartmentField, ToolTypeField
-│   ├── hooks/                 # useTools, useToolVotes, useSemanticSearch
-│   ├── lib/                   # Supabase client, fetchers, toolLinks, search
-│   ├── types/tool.ts          # Tool + submission TypeScript contract
-│   └── schema.ts              # Sheet column alias mirror (docs / migration helpers)
+│   ├── components/        # Header, Filters, ToolCard, ToolGrid, Footer,
+│   │                      # AdminPanel, SubmitToolPanel, DepartmentField, ToolTypeField
+│   ├── hooks/             # useTools, useToolVotes, useSemanticSearch
+│   ├── lib/               # Supabase client, fetchers, toolLinks, search
+│   ├── types/tool.ts      # Tool + submission TypeScript contract
+│   └── schema.ts          # Sheet column alias mirror (docs / migration helpers)
 ```
 
 ## Architecture (read path)
